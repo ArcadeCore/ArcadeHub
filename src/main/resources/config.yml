@@ -1,0 +1,6 @@
+# Games played in order by /hub playlist (ids as registered with ArcadeCore).
+playlist: [ffa, bedrock-pillars]
+# Ticks to wait after a match ends before requeueing (core must return players to lobby first).
+requeue-delay-ticks: 20
+vote:
+  window-seconds: 15

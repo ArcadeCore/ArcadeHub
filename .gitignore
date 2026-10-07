@@ -1,0 +1,15 @@
+.gradle/
+build/
+bin/
+out/
+run/
+.idea/
+.vscode/
+*.iml
+.claude/
+.omc/
+.remember/
+.env
+.env.*
+*.key
+*.pem
