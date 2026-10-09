@@ -2,6 +2,7 @@ name: ArcadeHub
 description: ${description}
 version: '${version}'
 main: org.drappula.arcadeHub.ArcadeHub
+api-version: '1.13'
 load: POSTWORLD
 authors: [ drappula, TejasLamba2006 ]
 depend: [ ArcadeCore ]
