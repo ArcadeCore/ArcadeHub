@@ -13,7 +13,7 @@ One jar runs on Minecraft 1.8 to 26.3 (Spigot, Paper and forks). It is compiled 
 spigot-api 1.8.8, so the server's Java version only has to be whatever that Minecraft version needs.
 
 Boot and command smoke tests were run on Paper 1.8.8, 1.12.2, 1.16.5, 1.20.4, 1.21.4 and 26.3 together with
-ArcadeCore, ArcadeBedrockPillars and ArcadeFFA. A bot-driven full match on each version has not been done yet.
+ArcadeCore, ArcadeBedrockPillars and ArcadeFFA. /hub top was exercised after a bot-driven FFA match on 1.8.8, 1.12.2, 1.16.5, 1.20.4, 1.21.4 and 26.1.2. /hub vote and /hub playlist have not been exercised by bots.
 
 ## Install
 
