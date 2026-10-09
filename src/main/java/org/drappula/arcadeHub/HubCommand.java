@@ -92,8 +92,8 @@ public final class HubCommand implements CommandExecutor, TabCompleter {
             Messages.chat(sender, "<gold><b>Top <scope></b>", "scope", gameId == null ? "overall" : gameId);
             int rank = 1;
             for (GameStats s : rows) {
-                Messages.chat(sender, "<yellow>#<rank> <white><name> <gray><line>",
-                        "rank", String.valueOf(rank++), "name", name(s.getUuid()), "line", line(s));
+                Messages.chat(sender, "<yellow>#<rank> <white><name> <gray><line> <dark_gray><extras>",
+                        "rank", String.valueOf(rank++), "name", name(s.getUuid()), "line", line(s), "extras", extras(s));
             }
         } catch (SQLException e) {
             ArcadeHub.get().getLogger().log(Level.SEVERE, "top failed", e);
@@ -115,7 +115,8 @@ public final class HubCommand implements CommandExecutor, TabCompleter {
                 Optional<GameStats> s = api.getStatsManager().getStats(player.getUniqueId(), g.getId());
                 if (!s.isPresent()) continue;
                 any = true;
-                Messages.chat(player, "<yellow><game> <gray><line>", "game", g.getDisplayName(), "line", line(s.get()));
+                Messages.chat(player, "<yellow><game> <gray><line> <dark_gray><extras>",
+                        "game", g.getDisplayName(), "line", line(s.get()), "extras", extras(s.get()));
             }
         } catch (SQLException e) {
             ArcadeHub.get().getLogger().log(Level.SEVERE, "stats failed", e);
@@ -125,21 +126,22 @@ public final class HubCommand implements CommandExecutor, TabCompleter {
         if (!any) Messages.chat(player, "<gray>Nothing recorded yet.");
     }
 
-    /** "3W/1L, 12 pts [kills=4 survival_seconds=90]". Plain text: it is passed as a placeholder value. */
+    /** "3W/1L, 12 pts". Plain text: it is passed as a placeholder value. */
     private static String line(GameStats s) {
-        StringBuilder sb = new StringBuilder();
-        sb.append(s.getWins()).append("W/").append(s.getLosses()).append("L, ").append(s.getPoints()).append(" pts");
-        if (!s.getOther().isEmpty()) {
-            sb.append(" [");
-            boolean first = true;
-            for (Map.Entry<String, Integer> e : s.getOther().entrySet()) {
-                if (!first) sb.append(' ');
-                sb.append(e.getKey()).append('=').append(e.getValue());
-                first = false;
-            }
-            sb.append(']');
+        return s.getWins() + "W/" + s.getLosses() + "L, " + s.getPoints() + " pts";
+    }
+
+    /** "[kills=4 survival_seconds=90]", or empty when the game recorded no extra stats. */
+    private static String extras(GameStats s) {
+        if (s.getOther().isEmpty()) return "";
+        StringBuilder sb = new StringBuilder("[");
+        boolean first = true;
+        for (Map.Entry<String, Integer> e : s.getOther().entrySet()) {
+            if (!first) sb.append(' ');
+            sb.append(e.getKey()).append('=').append(e.getValue());
+            first = false;
         }
-        return sb.toString();
+        return sb.append(']').toString();
     }
 
     private static String name(UUID id) {

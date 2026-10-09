@@ -119,12 +119,10 @@ public final class ArcadeHub extends JavaPlugin implements Listener {
         if (!voteRunning) {
             voteRunning = true;
             long secs = Math.max(1, getConfig().getLong("vote.window-seconds", 15));
-            Map<String, String> placeholders = new HashMap<String, String>();
-            placeholders.put("game", "[game]");
-            placeholders.put("secs", String.valueOf(secs));
-            String text = org.drappula.arcadeApi.message.LegacyText.translate(
-                    "<gold>Game vote started! <white>/hub vote <game></white> within <secs>s.", placeholders);
-            for (Player online : Bukkit.getOnlinePlayers()) online.sendMessage(text);
+            // "<game>" is a placeholder whose value is the literal text "<game>", so it prints as typed.
+            String text = "<gold>Game vote started! <white>/hub vote <game></white> within <secs>s.";
+            for (Player online : Bukkit.getOnlinePlayers()) Messages.chat(online, text, "game", "<game>", "secs", String.valueOf(secs));
+            Messages.chat(Bukkit.getConsoleSender(), text, "game", "<game>", "secs", String.valueOf(secs));
             Bukkit.getScheduler().runTaskLater(this, new Runnable() {
                 @Override
                 public void run() {
