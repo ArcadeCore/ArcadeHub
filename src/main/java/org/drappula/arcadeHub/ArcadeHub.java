@@ -1,11 +1,11 @@
 package org.drappula.arcadeHub;
 
-import io.papermc.paper.plugin.lifecycle.event.types.LifecycleEvents;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
@@ -18,6 +18,7 @@ import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.drappula.arcadeApi.ArcadeAPIProvider;
 import org.drappula.arcadeApi.events.MatchStateChangeEvent;
+import org.drappula.arcadeApi.message.Messages;
 import org.drappula.arcadeApi.systems.game.Game;
 import org.drappula.arcadeApi.systems.game.IMatch;
 import org.drappula.arcadeApi.systems.game.IParticipant;
@@ -33,9 +34,9 @@ public final class ArcadeHub extends JavaPlugin implements Listener {
     }
 
     /** Players who opted into the playlist (in-memory; resets on restart). */
-    final Set<UUID> playlist = new HashSet<>();
+    final Set<UUID> playlist = new HashSet<UUID>();
     /** Lobby votes: player -> game id. */
-    final Map<UUID, String> votes = new HashMap<>();
+    final Map<UUID, String> votes = new HashMap<UUID, String>();
     private boolean voteRunning;
 
     @Override
@@ -43,8 +44,9 @@ public final class ArcadeHub extends JavaPlugin implements Listener {
         instance = this;
         saveDefaultConfig();
         getServer().getPluginManager().registerEvents(this, this);
-        getLifecycleManager().registerEventHandler(LifecycleEvents.COMMANDS,
-                commands -> commands.registrar().register(HubCommand.get(this)));
+        HubCommand command = new HubCommand(this);
+        getCommand("hub").setExecutor(command);
+        getCommand("hub").setTabCompleter(command);
     }
 
     // ---- playlist ----
@@ -57,21 +59,26 @@ public final class ArcadeHub extends JavaPlugin implements Listener {
         if (next == null) return;
 
         // Capture now: the core may clear participants once ENDED handlers finish.
-        Set<UUID> ids = new LinkedHashSet<>();
+        Set<UUID> ids = new LinkedHashSet<UUID>();
         for (IParticipant p : match.getParticipants()) ids.add(p.getPlayer().getUniqueId());
         for (IParticipant p : match.getEliminatedParticipants()) ids.add(p.getPlayer().getUniqueId());
         ids.retainAll(playlist);
         if (ids.isEmpty()) return;
 
         long delay = Math.max(1, getConfig().getLong("requeue-delay-ticks", 20));
-        Bukkit.getScheduler().runTaskLater(this, () -> requeue(ids, next), delay);
+        Bukkit.getScheduler().runTaskLater(this, new Runnable() {
+            @Override
+            public void run() {
+                requeue(ids, next);
+            }
+        }, delay);
     }
 
     private Game nextGame(String currentId) {
         List<String> order = getConfig().getStringList("playlist");
         int i = order.indexOf(currentId);
         if (i < 0 || order.isEmpty()) return null;
-        var games = ArcadeAPIProvider.get().getGameManager();
+        org.drappula.arcadeApi.systems.game.IGameManager games = ArcadeAPIProvider.get().getGameManager();
         // Skip unregistered ids; give up after one full lap.
         for (int step = 1; step <= order.size(); step++) {
             Game g = games.getGame(order.get((i + step) % order.size()));
@@ -81,22 +88,22 @@ public final class ArcadeHub extends JavaPlugin implements Listener {
     }
 
     private void requeue(Set<UUID> ids, Game game) {
-        var queue = ArcadeAPIProvider.get().getQueueManager();
-        var matches = ArcadeAPIProvider.get().getMatchManager();
-        List<Player> ready = new ArrayList<>();
+        org.drappula.arcadeApi.systems.queue.IQueueManager queue = ArcadeAPIProvider.get().getQueueManager();
+        org.drappula.arcadeApi.systems.game.IMatchManager matches = ArcadeAPIProvider.get().getMatchManager();
+        List<Player> ready = new ArrayList<Player>();
         for (UUID id : ids) {
             Player p = Bukkit.getPlayer(id);
-            if (p != null && p.isOnline() && playlist.contains(id) && !queue.isQueued(p) && matches.getMatch(p).isEmpty()) {
+            if (p != null && p.isOnline() && playlist.contains(id) && !queue.isQueued(p) && !matches.getMatch(p).isPresent()) {
                 ready.add(p);
             }
         }
         if (ready.isEmpty()) return;
         JoinResult result = queue.joinQueue(ready, game);
         for (Player p : ready) {
-            p.sendRichMessage(result == JoinResult.SUCCESS
-                    ? "<green>Playlist: queued for <white>" + game.getDisplayName() + "</white>. /hub playlist off to stop."
-                    : "<red>Playlist could not queue you for " + game.getDisplayName() + ": "
-                            + result.name().toLowerCase().replace('_', ' '));
+            Messages.chat(p, result == JoinResult.SUCCESS
+                    ? "<green>Playlist: queued for <white><game></white>. /hub playlist off to stop."
+                    : "<red>Playlist could not queue you for <game>: <reason>",
+                    "game", game.getDisplayName(), "reason", result.name().toLowerCase(Locale.ROOT).replace('_', ' '));
         }
     }
 
@@ -104,7 +111,7 @@ public final class ArcadeHub extends JavaPlugin implements Listener {
 
     /** Registers a vote; the first vote opens the window. Returns false if the player is busy. */
     boolean vote(Player player, Game game) {
-        var api = ArcadeAPIProvider.get();
+        org.drappula.arcadeApi.ArcadeAPI api = ArcadeAPIProvider.get();
         if (api.getQueueManager().isQueued(player) || api.getMatchManager().getMatch(player).isPresent()) {
             return false;
         }
@@ -112,28 +119,44 @@ public final class ArcadeHub extends JavaPlugin implements Listener {
         if (!voteRunning) {
             voteRunning = true;
             long secs = Math.max(1, getConfig().getLong("vote.window-seconds", 15));
-            Bukkit.broadcast(net.kyori.adventure.text.minimessage.MiniMessage.miniMessage().deserialize(
-                    "<gold>Game vote started! <white>/hub vote <game></white> within " + secs + "s."));
-            Bukkit.getScheduler().runTaskLater(this, this::closeVote, secs * 20L);
+            Map<String, String> placeholders = new HashMap<String, String>();
+            placeholders.put("game", "[game]");
+            placeholders.put("secs", String.valueOf(secs));
+            String text = org.drappula.arcadeApi.message.LegacyText.translate(
+                    "<gold>Game vote started! <white>/hub vote <game></white> within <secs>s.", placeholders);
+            for (Player online : Bukkit.getOnlinePlayers()) online.sendMessage(text);
+            Bukkit.getScheduler().runTaskLater(this, new Runnable() {
+                @Override
+                public void run() {
+                    closeVote();
+                }
+            }, secs * 20L);
         }
         return true;
     }
 
     private void closeVote() {
-        Map<String, Integer> tally = new HashMap<>();
-        votes.values().forEach(g -> tally.merge(g, 1, Integer::sum));
-        List<UUID> voters = new ArrayList<>(votes.keySet());
+        Map<String, Integer> tally = new HashMap<String, Integer>();
+        for (String voted : votes.values()) {
+            Integer count = tally.get(voted);
+            tally.put(voted, count == null ? 1 : count + 1);
+        }
+        List<UUID> voters = new ArrayList<UUID>(votes.keySet());
         votes.clear();
         voteRunning = false;
         if (tally.isEmpty()) return;
 
-        int best = tally.values().stream().max(Integer::compare).orElse(0);
-        List<String> winners = tally.entrySet().stream().filter(e -> e.getValue() == best).map(Map.Entry::getKey).toList();
+        int best = 0;
+        for (int count : tally.values()) best = Math.max(best, count);
+        List<String> winners = new ArrayList<String>();
+        for (Map.Entry<String, Integer> entry : tally.entrySet()) {
+            if (entry.getValue() == best) winners.add(entry.getKey());
+        }
         Game game = ArcadeAPIProvider.get().getGameManager().getGame(winners.get(new Random().nextInt(winners.size())));
         if (game == null) return;
 
-        var queue = ArcadeAPIProvider.get().getQueueManager();
-        List<Player> players = new ArrayList<>();
+        org.drappula.arcadeApi.systems.queue.IQueueManager queue = ArcadeAPIProvider.get().getQueueManager();
+        List<Player> players = new ArrayList<Player>();
         for (UUID id : voters) {
             Player p = Bukkit.getPlayer(id);
             if (p != null && p.isOnline() && !queue.isQueued(p)) players.add(p);
@@ -141,10 +164,10 @@ public final class ArcadeHub extends JavaPlugin implements Listener {
         if (players.isEmpty()) return;
         JoinResult result = queue.joinQueue(players, game);
         for (Player p : players) {
-            p.sendRichMessage(result == JoinResult.SUCCESS
-                    ? "<green>Vote won: <white>" + game.getDisplayName() + "</white>. You are queued."
-                    : "<red>Vote won by " + game.getDisplayName() + " but queueing failed: "
-                            + result.name().toLowerCase().replace('_', ' '));
+            Messages.chat(p, result == JoinResult.SUCCESS
+                    ? "<green>Vote won: <white><game></white>. You are queued."
+                    : "<red>Vote won by <game> but queueing failed: <reason>",
+                    "game", game.getDisplayName(), "reason", result.name().toLowerCase(Locale.ROOT).replace('_', ' '));
         }
     }
 

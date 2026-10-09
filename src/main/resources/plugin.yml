@@ -2,12 +2,10 @@ name: ArcadeHub
 description: ${description}
 version: '${version}'
 main: org.drappula.arcadeHub.ArcadeHub
-api-version: '1.21.11'
 load: POSTWORLD
 authors: [ drappula, TejasLamba2006 ]
-dependencies:
-  server:
-    ArcadeCore:
-      load: BEFORE
-      required: true
-      join-classpath: true
+depend: [ ArcadeCore ]
+commands:
+  hub:
+    description: Arcade Hub stats, playlist and vote
+    usage: /hub [top|stats|playlist|vote]
